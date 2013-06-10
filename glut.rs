@@ -14,7 +14,7 @@ use glut::bindgen::{glutKeyboardFunc, glutGetModifiers, glutMotionFunc, glutPass
 use glut::bindgen::{glutGet, glutGetWindow};
 use glut::bindgen::{glutInit, glutInitDisplayMode, glutPostRedisplay, glutReshapeFunc};
 use glut::bindgen::{glutReshapeWindow, glutSetWindow, glutSetWindowTitle, glutSwapBuffers};
-use glut::bindgen::{glutTimerFunc};
+use glut::bindgen::{glutTimerFunc, glutIdleFunc};
 use core::libc::*;
 use core::local_data::{local_data_get, local_data_set};
 use core::ptr::{null, to_unsafe_ptr};
@@ -65,6 +65,11 @@ pub static MOUSE_UP: c_int = 1;
 static WINDOW_WIDTH: GLenum = 102;
 static WINDOW_HEIGHT: GLenum = 103;
 
+#[cfg(target_os="linux")]
+pub static HAVE_PRECISE_MOUSE_WHEEL: bool = false;
+#[cfg(target_os="macos")]
+pub static HAVE_PRECISE_MOUSE_WHEEL: bool = true;
+
 pub enum State {
     WindowWidth,
     WindowHeight
@@ -106,7 +111,7 @@ pub fn set_window(window: Window) {
     }
 }
 
-pub fn set_window_title(window: Window, title: ~str) {
+pub fn set_window_title(window: Window, title: &str) {
     unsafe {
         let bytes = to_bytes(title);
         glutSetWindowTitle(to_ptr(bytes) as *c_char);
@@ -257,6 +262,57 @@ pub fn reshape_func(_window: Window, callback: @fn(x: c_int, y: c_int)) {
     unsafe {
         local_data_set(reshape_callback_tls_key, @callback);
         glutReshapeFunc(reshape_callback);
+    }
+}
+
+pub fn idle_callback_tls_key(_callback: @@fn()) {
+    // Empty.
+}
+
+pub extern fn idle_callback() {
+    unsafe {
+        let callback = local_data_get(idle_callback_tls_key).get();
+        (*callback)();
+    }
+}
+
+pub fn idle_func(callback: @fn()) {
+    unsafe {
+        local_data_set(idle_callback_tls_key, @callback);
+        glutIdleFunc(idle_callback);
+    }
+}
+
+// Mouse wheel handling.
+//
+// This is not part of the standard, but it's supported by freeglut and our Mac hack.
+pub fn mouse_wheel_callback_tls_key(_callback: @@fn(wheel: c_int,
+                                                    direction: c_int,
+                                                    x: c_int,
+                                                    y: c_int)) {
+    // Empty.
+}
+
+#[cfg(target_os="linux")]
+pub extern fn mouse_wheel_callback(wheel: c_int, direction: c_int, x: c_int, y: c_int) {
+    unsafe {
+        let callback = local_data_get(wheel_callback_tls_key).get();
+        (*callback)(wheel, direction, x, y)
+    }
+}
+
+#[cfg(target_os="linux")]
+pub fn mouse_wheel_func(callback: @fn(wheel: c_int, direction: c_int, x: c_int, y: c_int)) {
+    unsafe {
+        local_data_set(wheel_callback_tls_key, @callback);
+        glutMouseWheelFunc(mouse_wheel_callback);
+    }
+}
+
+#[cfg(target_os="macos")]
+pub fn mouse_wheel_func(callback: @fn(wheel: c_int, direction: c_int, x: c_int, y: c_int)) {
+    unsafe {
+        local_data_set(mouse_wheel_callback_tls_key, @callback);
     }
 }
 
